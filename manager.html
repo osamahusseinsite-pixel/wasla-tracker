@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Wasla Solutions – Manager View</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root {
+    --bg: #0a0a0f; --surface: #12121a; --surface2: #1a1a26; --border: #2a2a3d;
+    --accent: #6c63ff; --accent2: #ff6b6b; --green: #00e5a0; --yellow: #ffd166;
+    --text: #e8e8f0; --muted: #6b6b8a; --done-bg: #0d1f18;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:var(--bg); color:var(--text); font-family:'IBM Plex Mono',monospace; min-height:100vh; }
+  body::before { content:''; position:fixed; inset:0; background-image:linear-gradient(rgba(108,99,255,0.04) 1px,transparent 1px),linear-gradient(90deg,rgba(108,99,255,0.04) 1px,transparent 1px); background-size:40px 40px; pointer-events:none; z-index:0; }
+  .container { max-width:1000px; margin:0 auto; padding:40px 20px 80px; position:relative; z-index:1; }
+
+  .header { display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:40px; flex-wrap:wrap; gap:16px; }
+  .brand-name { font-family:'Syne',sans-serif; font-size:11px; font-weight:700; letter-spacing:4px; text-transform:uppercase; color:var(--accent); }
+  .brand-title { font-family:'Syne',sans-serif; font-size:28px; font-weight:800; color:var(--text); line-height:1.1; }
+  .manager-badge { padding:6px 16px; border-radius:4px; font-size:11px; font-weight:500; letter-spacing:1px; text-transform:uppercase; border:1px solid var(--accent2); background:rgba(255,107,107,0.08); color:var(--accent2); }
+  .live-badge { display:flex; align-items:center; gap:6px; font-size:11px; color:var(--green); }
+  .live-dot { width:7px; height:7px; border-radius:50%; background:var(--green); box-shadow:0 0 6px var(--green); animation:blink 1.2s ease-in-out infinite; }
+  @keyframes blink{0%,100%{opacity:1}50%{opacity:0.3}}
+
+  .stats-row { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:12px; margin-bottom:28px; }
+  .stat-card { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:16px 20px; display:flex; flex-direction:column; gap:6px; }
+  .stat-val { font-family:'Syne',sans-serif; font-size:22px; font-weight:800; }
+  .stat-label { font-size:9px; letter-spacing:2px; text-transform:uppercase; color:var(--muted); }
+
+  .progress-wrap { margin-bottom:28px; }
+  .progress-header { display:flex; justify-content:space-between; margin-bottom:8px; font-size:11px; color:var(--muted); letter-spacing:1px; text-transform:uppercase; }
+  .progress-bar { height:8px; background:var(--surface2); border-radius:99px; overflow:hidden; }
+  .progress-fill { height:100%; background:linear-gradient(90deg,var(--accent),var(--green)); border-radius:99px; transition:width 0.6s ease; }
+
+  .section-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; padding-bottom:10px; border-bottom:1px solid var(--border); }
+  .section-title { font-family:'Syne',sans-serif; font-size:12px; font-weight:700; letter-spacing:3px; text-transform:uppercase; color:var(--muted); }
+
+  .task-table { width:100%; border-collapse:collapse; margin-bottom:40px; }
+  .task-table th { font-size:9px; letter-spacing:2px; text-transform:uppercase; color:var(--muted); text-align:left; padding:8px 14px; border-bottom:1px solid var(--border); }
+  .task-table td { padding:12px 14px; border-bottom:1px solid rgba(42,42,61,0.5); font-size:13px; }
+  .task-table tr:last-child td { border-bottom:none; }
+  .task-table tr:hover td { background:var(--surface2); }
+  .status-pill { display:inline-flex; align-items:center; gap:5px; padding:3px 10px; border-radius:20px; font-size:10px; font-weight:500; }
+  .status-done { background:rgba(0,229,160,0.12); color:var(--green); }
+  .status-pending { background:rgba(107,107,138,0.12); color:var(--muted); }
+  .status-running { background:rgba(0,229,160,0.08); color:var(--green); border:1px solid rgba(0,229,160,0.3); animation:pulse 2s ease-in-out infinite; }
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.6}}
+  .time-val { font-family:'Syne',sans-serif; font-size:13px; font-weight:600; }
+  .time-over { color:var(--accent2); }
+  .time-ok { color:var(--green); }
+  .estimate-pill { font-size:10px; color:var(--yellow); background:rgba(255,209,102,0.08); padding:2px 8px; border-radius:4px; }
+
+  .projects-section { margin-top:48px; }
+  .project-card { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:18px 22px; margin-bottom:10px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; }
+  .project-name { font-family:'Syne',sans-serif; font-size:15px; font-weight:700; color:var(--text); }
+  .project-meta { font-size:11px; color:var(--muted); margin-top:3px; }
+  .project-stats { display:flex; gap:20px; align-items:center; }
+  .project-stat { display:flex; flex-direction:column; align-items:flex-end; gap:2px; }
+
+  .empty-state { text-align:center; padding:60px 20px; color:var(--muted); font-size:13px; }
+  .loading { text-align:center; padding:40px; color:var(--muted); font-size:12px; letter-spacing:2px; }
+
+  .refresh-info { font-size:10px; color:var(--muted); text-align:right; margin-bottom:8px; }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <div>
+      <div class="brand-name">Wasla Solutions</div>
+      <div class="brand-title">Manager View</div>
+    </div>
+    <div style="display:flex;flex-direction:column;align-items:flex-end;gap:10px;">
+      <span class="manager-badge">👁 Read Only</span>
+      <span class="live-badge"><span class="live-dot"></span> Live — auto-refreshes every 30s</span>
+    </div>
+  </div>
+
+  <!-- Active project -->
+  <div id="activeProject">
+    <div class="loading">Loading active project…</div>
+  </div>
+
+  <!-- All projects history -->
+  <div class="projects-section">
+    <div class="section-header">
+      <span class="section-title">Project History</span>
+      <span id="projectCount" style="font-size:11px;color:var(--muted);">—</span>
+    </div>
+    <div id="projectHistory"><div class="loading">Loading…</div></div>
+  </div>
+</div>
+
+<script>
+const SUPABASE_URL = 'https://ohgmolrowdrjgtpptqif.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9oZ21vbHJvd2Ryamd0cHB0cWlmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA4Mzk4OTMsImV4cCI6MjA5NjQxNTg5M30.siVGJs-0D-zBG7hewGD4vTCTOoyHpsAd2SseYoVx0gg';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+const TOTAL_EST_MIN = 1230;
+function pad(n){ return String(n).padStart(2,'0'); }
+function fmtMs(ms){ const s=Math.floor(ms/1000),h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sc=s%60; return `${pad(h)}:${pad(m)}:${pad(sc)}`; }
+function fmtMin(m){ if(!m&&m!==0)return'—'; const h=Math.floor(m/60),mn=m%60; return h&&mn?`${h}h ${mn}m`:h?`${h}h`:`${mn}m`; }
+function fmtDate(d){ return new Date(d).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}); }
+
+let activeTimer = null;
+
+async function loadData(){
+  const { data: projects } = await sb.from('projects').select('*, tasks(*)').order('created_at',{ascending:false});
+  if(!projects||projects.length===0){ renderEmpty(); return; }
+
+  const active = projects.find(p=>p.started_at&&!p.finished_at);
+  const finished = projects.filter(p=>p.finished_at);
+
+  renderActiveProject(active, projects[0]);
+  renderHistory(finished);
+  document.getElementById('projectCount').textContent=`${projects.length} total project${projects.length!==1?'s':''}`;
+}
+
+function renderActiveProject(active, latest){
+  const el = document.getElementById('activeProject');
+  if(!active){ el.innerHTML=`<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px 24px;margin-bottom:28px;text-align:center;color:var(--muted);font-size:13px;">No active project running right now</div>`; return; }
+
+  const tasks = active.tasks || [];
+  const done = tasks.filter(t=>t.done).length;
+  const pct = tasks.length ? Math.round((done/tasks.length)*100) : 0;
+  const startMs = new Date(active.started_at).getTime();
+  const elapsedMs = Date.now() - startMs;
+  const elapsedMin = elapsedMs/60000;
+  const remain = TOTAL_EST_MIN - elapsedMin;
+
+  el.innerHTML = `
+    <div style="background:var(--surface);border:1px solid rgba(0,229,160,0.3);border-radius:12px;padding:24px;margin-bottom:28px;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px;margin-bottom:20px;">
+        <div>
+          <div style="font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--green);margin-bottom:4px;">● Active Project</div>
+          <div style="font-family:'Syne',sans-serif;font-size:22px;font-weight:800;">${active.name}</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:4px;">Started: ${fmtDate(active.started_at)}</div>
+        </div>
+        <div style="display:flex;gap:20px;flex-wrap:wrap;">
+          <div style="text-align:center;">
+            <div style="font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:var(--green)" id="liveTimer">${fmtMs(elapsedMs)}</div>
+            <div style="font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);">Elapsed</div>
+          </div>
+          <div style="text-align:center;">
+            <div style="font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:${remain>0?'var(--yellow)':'var(--accent2)'}">${remain>0?fmtMin(Math.round(remain)):'+'+fmtMin(Math.round(-remain))}</div>
+            <div style="font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);">${remain>0?'Remaining':'Over Est.'}</div>
+          </div>
+          <div style="text-align:center;">
+            <div style="font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:var(--accent)">${pct}%</div>
+            <div style="font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);">Complete</div>
+          </div>
+        </div>
+      </div>
+      <div style="margin-bottom:20px;">
+        <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:6px;"><span>Progress</span><span>${done} / ${tasks.length} tasks done</span></div>
+        <div style="height:6px;background:var(--surface2);border-radius:99px;overflow:hidden;"><div style="height:100%;width:${pct}%;background:linear-gradient(90deg,var(--accent),var(--green));border-radius:99px;"></div></div>
+      </div>
+      <table class="task-table">
+        <thead><tr><th>Task</th><th>Assignee</th><th>Estimate</th><th>Time Spent</th><th>Status</th></tr></thead>
+        <tbody>
+          ${tasks.sort((a,b)=>a.id-b.id).map(t=>{
+            const eMin = t.elapsed_ms/60000;
+            const over = t.estimate_min>0 && eMin>t.estimate_min;
+            return `<tr>
+              <td style="font-family:'Syne',sans-serif;font-weight:600;${t.done?'text-decoration:line-through;opacity:0.5':''}">${t.name}</td>
+              <td style="color:var(--muted)">${t.assignee}</td>
+              <td><span class="estimate-pill">${t.estimate_label}</span></td>
+              <td><span class="time-val ${over?'time-over':'time-ok'}">${t.elapsed_ms>0?fmtMs(t.elapsed_ms):'—'}</span></td>
+              <td><span class="status-pill ${t.done?'status-done':'status-pending'}">${t.done?'✓ Done':'○ Pending'}</span></td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>`;
+
+  // Start live timer
+  if(activeTimer) clearInterval(activeTimer);
+  activeTimer = setInterval(()=>{
+    const el=document.getElementById('liveTimer');
+    if(el) el.textContent=fmtMs(Date.now()-startMs);
+  },1000);
+}
+
+function renderHistory(projects){
+  const el=document.getElementById('projectHistory');
+  if(!projects||projects.length===0){ el.innerHTML=`<div class="empty-state">No completed projects yet</div>`; return; }
+  el.innerHTML=projects.map(p=>{
+    const tasks=p.tasks||[];
+    const done=tasks.filter(t=>t.done).length;
+    const durationMs=new Date(p.finished_at)-new Date(p.started_at);
+    const durationMin=durationMs/60000;
+    const diff=durationMin-TOTAL_EST_MIN;
+    return `<div class="project-card">
+      <div>
+        <div class="project-name">${p.name}</div>
+        <div class="project-meta">${fmtDate(p.started_at)} → ${fmtDate(p.finished_at)}</div>
+      </div>
+      <div class="project-stats">
+        <div class="project-stat">
+          <span style="font-family:'Syne',sans-serif;font-size:16px;font-weight:700;color:var(--text)">${fmtMs(durationMs)}</span>
+          <span style="font-size:9px;letter-spacing:1px;text-transform:uppercase;color:var(--muted)">Total Time</span>
+        </div>
+        <div class="project-stat">
+          <span style="font-family:'Syne',sans-serif;font-size:16px;font-weight:700;color:${diff>0?'var(--accent2)':'var(--green)'}">${diff>0?'+'+fmtMin(Math.round(diff)):'-'+fmtMin(Math.round(-diff))}</span>
+          <span style="font-size:9px;letter-spacing:1px;text-transform:uppercase;color:var(--muted)">${diff>0?'Over':'Under'}</span>
+        </div>
+        <div class="project-stat">
+          <span style="font-family:'Syne',sans-serif;font-size:16px;font-weight:700;color:var(--accent)">${done}/${tasks.length}</span>
+          <span style="font-size:9px;letter-spacing:1px;text-transform:uppercase;color:var(--muted)">Tasks Done</span>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderEmpty(){
+  document.getElementById('activeProject').innerHTML=`<div class="empty-state" style="padding:80px 20px;"><div style="font-size:32px;margin-bottom:16px;">📋</div><div>No projects yet.<br>Start one in the tracker!</div></div>`;
+  document.getElementById('projectHistory').innerHTML='';
+}
+
+loadData();
+setInterval(loadData, 30000); // refresh every 30s
+</script>
+</body>
+</html>
