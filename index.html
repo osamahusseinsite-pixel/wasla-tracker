@@ -1,1 +1,505 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Wasla Solutions – Project Tracker</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root {
+    --bg: #0a0a0f; --surface: #12121a; --surface2: #1a1a26; --border: #2a2a3d;
+    --accent: #6c63ff; --accent2: #ff6b6b; --green: #00e5a0; --yellow: #ffd166;
+    --text: #e8e8f0; --muted: #6b6b8a; --done-bg: #0d1f18;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:var(--bg); color:var(--text); font-family:'IBM Plex Mono',monospace; min-height:100vh; }
+  body::before { content:''; position:fixed; inset:0; background-image:linear-gradient(rgba(108,99,255,0.04) 1px,transparent 1px),linear-gradient(90deg,rgba(108,99,255,0.04) 1px,transparent 1px); background-size:40px 40px; pointer-events:none; z-index:0; }
+  .container { max-width:900px; margin:0 auto; padding:40px 20px 80px; position:relative; z-index:1; }
+  .header { display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:40px; flex-wrap:wrap; gap:16px; }
+  .brand-name { font-family:'Syne',sans-serif; font-size:11px; font-weight:700; letter-spacing:4px; text-transform:uppercase; color:var(--accent); }
+  .brand-title { font-family:'Syne',sans-serif; font-size:28px; font-weight:800; color:var(--text); line-height:1.1; }
+  .team-badges { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  .badge { padding:6px 14px; border-radius:4px; font-size:11px; font-weight:500; letter-spacing:1px; text-transform:uppercase; border:1px solid var(--border); background:var(--surface); color:var(--muted); }
+  .badge.active { background:rgba(108,99,255,0.15); border-color:var(--accent); color:var(--accent); }
+  .manager-link { padding:6px 14px; border-radius:4px; font-size:11px; font-weight:500; letter-spacing:1px; text-transform:uppercase; border:1px solid var(--green); background:rgba(0,229,160,0.08); color:var(--green); text-decoration:none; }
+  .project-bar { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:20px 24px; margin-bottom:28px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:16px; }
+  .project-label { font-size:10px; letter-spacing:2px; text-transform:uppercase; color:var(--muted); margin-bottom:4px; }
+  .project-name-input { background:transparent; border:none; color:var(--text); font-family:'Syne',sans-serif; font-size:18px; font-weight:700; outline:none; width:260px; border-bottom:1px dashed var(--border); padding-bottom:2px; }
+  .project-name-input::placeholder { color:var(--muted); }
+  .project-controls { display:flex; gap:10px; flex-wrap:wrap; }
+  .btn { padding:10px 20px; border-radius:6px; font-family:'IBM Plex Mono',monospace; font-size:12px; font-weight:500; cursor:pointer; border:none; transition:all 0.15s ease; }
+  .btn-start { background:var(--green); color:#000; }
+  .btn-start:hover { background:#00c88c; transform:translateY(-1px); }
+  .btn-finish { background:var(--accent2); color:#fff; }
+  .btn-finish:hover { background:#e85555; transform:translateY(-1px); }
+  .btn-reset { background:var(--surface2); color:var(--muted); border:1px solid var(--border); }
+  .btn-reset:hover { color:var(--text); }
+  .saving-indicator { font-size:10px; color:var(--muted); letter-spacing:1px; }
+  .saving-indicator.saving { color:var(--yellow); }
+  .saving-indicator.saved { color:var(--green); }
+  .saving-indicator.error { color:var(--accent2); }
+  .timer-strip { background:var(--surface2); border:1px solid var(--border); border-radius:10px; padding:16px 24px; margin-bottom:28px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; }
+  .timer-block { display:flex; flex-direction:column; align-items:center; gap:4px; }
+  .timer-val { font-family:'Syne',sans-serif; font-size:26px; font-weight:800; color:var(--accent); font-variant-numeric:tabular-nums; letter-spacing:2px; }
+  .timer-val.running { color:var(--green); animation:pulse 2s ease-in-out infinite; }
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.6}}
+  .timer-label { font-size:9px; letter-spacing:2px; text-transform:uppercase; color:var(--muted); }
+  .status-dot { width:8px; height:8px; border-radius:50%; background:var(--muted); display:inline-block; margin-right:8px; }
+  .status-dot.running { background:var(--green); box-shadow:0 0 8px var(--green); animation:blink 1.2s ease-in-out infinite; }
+  .status-dot.done { background:var(--accent2); }
+  @keyframes blink{0%,100%{opacity:1}50%{opacity:0.3}}
+  .status-text { font-size:12px; color:var(--muted); }
+  .progress-wrap { margin-bottom:28px; }
+  .progress-header { display:flex; justify-content:space-between; margin-bottom:8px; font-size:11px; color:var(--muted); letter-spacing:1px; text-transform:uppercase; }
+  .progress-bar { height:6px; background:var(--surface2); border-radius:99px; overflow:hidden; }
+  .progress-fill { height:100%; background:linear-gradient(90deg,var(--accent),var(--green)); border-radius:99px; transition:width 0.4s ease; }
+  .section-header { display:flex; align-items:center; gap:12px; margin-bottom:14px; padding-bottom:10px; border-bottom:1px solid var(--border); }
+  .section-title { font-family:'Syne',sans-serif; font-size:12px; font-weight:700; letter-spacing:3px; text-transform:uppercase; color:var(--muted); }
+  .section-count { font-size:11px; color:var(--accent); background:rgba(108,99,255,0.12); padding:2px 8px; border-radius:20px; }
+  .task-list { display:flex; flex-direction:column; gap:8px; margin-bottom:32px; }
+  .task-card { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:14px 18px; display:flex; align-items:center; gap:14px; cursor:pointer; transition:all 0.2s ease; position:relative; overflow:hidden; }
+  .task-card:hover { border-color:var(--accent); background:var(--surface2); }
+  .task-card.active { border-color:var(--green); background:rgba(0,229,160,0.05); }
+  .task-card.active::before,.task-card.done::before { content:''; position:absolute; left:0; top:0; bottom:0; width:3px; background:var(--green); }
+  .task-card.done { background:var(--done-bg); border-color:rgba(0,229,160,0.2); opacity:0.7; }
+  .task-check { width:22px; height:22px; border-radius:6px; border:2px solid var(--border); display:flex; align-items:center; justify-content:center; flex-shrink:0; font-size:13px; transition:all 0.2s; }
+  .task-card.done .task-check { background:var(--green); border-color:var(--green); color:#000; }
+  .task-card.active .task-check { border-color:var(--green); background:rgba(0,229,160,0.2); color:var(--green); }
+  .task-info { flex:1; display:flex; flex-direction:column; gap:2px; }
+  .task-name { font-family:'Syne',sans-serif; font-size:14px; font-weight:600; color:var(--text); }
+  .task-card.done .task-name { text-decoration:line-through; color:var(--muted); }
+  .task-meta { font-size:10px; color:var(--muted); }
+  .task-right { display:flex; flex-direction:column; align-items:flex-end; gap:4px; }
+  .task-estimate { font-size:11px; color:var(--yellow); background:rgba(255,209,102,0.1); padding:3px 9px; border-radius:4px; font-weight:500; white-space:nowrap; }
+  .task-elapsed { font-size:10px; color:var(--green); }
+  .task-btn { padding:6px 12px; border-radius:5px; font-family:'IBM Plex Mono',monospace; font-size:10px; font-weight:500; cursor:pointer; border:1px solid var(--border); background:transparent; color:var(--muted); transition:all 0.15s; white-space:nowrap; }
+  .task-btn:hover { color:var(--text); border-color:var(--accent); }
+  .task-btn.running { color:var(--green); border-color:var(--green); background:rgba(0,229,160,0.08); }
+  .summary { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:24px; margin-top:12px; }
+  .summary-title { font-family:'Syne',sans-serif; font-size:13px; font-weight:700; letter-spacing:3px; text-transform:uppercase; color:var(--muted); margin-bottom:20px; }
+  .summary-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:16px; margin-bottom:20px; }
+  .summary-stat { display:flex; flex-direction:column; gap:6px; }
+  .stat-val { font-family:'Syne',sans-serif; font-size:24px; font-weight:800; }
+  .stat-label { font-size:10px; letter-spacing:2px; text-transform:uppercase; color:var(--muted); }
+  .log-list { max-height:160px; overflow-y:auto; border-top:1px solid var(--border); padding-top:16px; margin-top:4px; display:flex; flex-direction:column; gap:6px; }
+  .log-entry { display:flex; justify-content:space-between; font-size:11px; }
+  .log-task { color:var(--text); } .log-time { color:var(--green); } .log-time.over { color:var(--accent2); }
+  .toast { position:fixed; bottom:30px; left:50%; transform:translateX(-50%) translateY(80px); background:var(--surface2); border:1px solid var(--border); border-radius:8px; padding:14px 24px; font-size:13px; color:var(--text); transition:transform 0.3s ease; z-index:100; white-space:nowrap; }
+  .toast.show { transform:translateX(-50%) translateY(0); }
+  .toast.green { border-color:var(--green); color:var(--green); }
+  .toast.red { border-color:var(--accent2); color:var(--accent2); }
+  .loading-overlay { position:fixed; inset:0; background:var(--bg); display:flex; align-items:center; justify-content:center; z-index:200; flex-direction:column; gap:16px; }
+  .loading-overlay.hidden { display:none; }
+  .loading-spinner { width:32px; height:32px; border:2px solid var(--border); border-top-color:var(--accent); border-radius:50%; animation:spin 0.8s linear infinite; }
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .loading-text { font-size:12px; color:var(--muted); letter-spacing:2px; }
+</style>
+</head>
+<body>
 
+<div class="loading-overlay" id="loadingOverlay">
+  <div class="loading-spinner"></div>
+  <div class="loading-text">RESTORING SESSION…</div>
+</div>
+
+<div class="container">
+  <div class="header">
+    <div>
+      <div class="brand-name">Wasla Solutions</div>
+      <div class="brand-title">Project Tracker</div>
+    </div>
+    <div class="team-badges">
+      <span class="badge active">Osama</span>
+      <span class="badge">Usef</span>
+      <span class="badge">Hagary</span>
+      <span class="badge">Client</span>
+      <a class="manager-link" href="manager.html" target="_blank">👁 Manager View</a>
+    </div>
+  </div>
+
+  <div class="project-bar">
+    <div>
+      <div class="project-label">Project Name</div>
+      <input class="project-name-input" id="projectName" placeholder="Enter client / project name…" />
+    </div>
+    <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end;">
+      <div class="project-controls">
+        <button class="btn btn-start" onclick="startProject()">▶ Start Project</button>
+        <button class="btn btn-finish" onclick="finishProject()">■ Finish & Calculate</button>
+        <button class="btn btn-reset" onclick="resetAll()">↺ Reset</button>
+      </div>
+      <span class="saving-indicator" id="savingIndicator">● connected</span>
+    </div>
+  </div>
+
+  <div class="timer-strip">
+    <div style="display:flex;align-items:center;gap:8px;">
+      <span class="status-dot" id="statusDot"></span>
+      <span class="status-text" id="statusText">Not started</span>
+    </div>
+    <div style="display:flex;gap:32px;flex-wrap:wrap;">
+      <div class="timer-block">
+        <span class="timer-val" id="elapsedDisplay">00:00:00</span>
+        <span class="timer-label">Total Elapsed</span>
+      </div>
+      <div class="timer-block">
+        <span class="timer-val" style="color:var(--yellow)" id="estimatedDisplay">—</span>
+        <span class="timer-label">Total Estimated</span>
+      </div>
+      <div class="timer-block">
+        <span class="timer-val" style="color:var(--muted)" id="remainDisplay">—</span>
+        <span class="timer-label">Remaining</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="progress-wrap">
+    <div class="progress-header"><span>Completion</span><span id="progressPct">0%</span></div>
+    <div class="progress-bar"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
+  </div>
+
+  <div class="section-header">
+    <span class="section-title">Tasks</span>
+    <span class="section-count" id="taskCount">0 / 15 done</span>
+  </div>
+  <div class="task-list" id="taskList"></div>
+
+  <div class="summary" id="summaryPanel" style="display:none">
+    <div class="summary-title">📊 Project Summary</div>
+    <div class="summary-grid">
+      <div class="summary-stat"><span class="stat-val" style="color:var(--accent)" id="sumTotal">—</span><span class="stat-label">Total Time</span></div>
+      <div class="summary-stat"><span class="stat-val" style="color:var(--yellow)" id="sumEstimate">—</span><span class="stat-label">Estimated</span></div>
+      <div class="summary-stat"><span class="stat-val" style="color:var(--green)" id="sumDone">—</span><span class="stat-label">Tasks Done</span></div>
+      <div class="summary-stat"><span class="stat-val" id="sumDiff" style="color:var(--muted)">—</span><span class="stat-label">Over / Under</span></div>
+    </div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:10px;letter-spacing:1px;text-transform:uppercase;">Task Breakdown</div>
+    <div class="log-list" id="logList"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const SUPABASE_URL = 'https://ohgmolrowdrjgtpptqif.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9oZ21vbHJvd2Ryamd0cHB0cWlmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA4Mzk4OTMsImV4cCI6MjA5NjQxNTg5M30.siVGJs-0D-zBG7hewGD4vTCTOoyHpsAd2SseYoVx0gg';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+const TASKS_DEF = [
+  {id:1,  name:"Logo usable, branding",        estimate:30,  estimateLabel:"30m",   assignee:"Osama"},
+  {id:2,  name:"Theme requirements",            estimate:60,  estimateLabel:"1h",    assignee:"Osama"},
+  {id:3,  name:"Set up store (acc / C's acc)",  estimate:30,  estimateLabel:"30m",   assignee:"Osama"},
+  {id:4,  name:"Connect theme",                 estimate:30,  estimateLabel:"30m",   assignee:"Osama"},
+  {id:5,  name:"Home page sections",            estimate:60,  estimateLabel:"1h",    assignee:"Osama"},
+  {id:6,  name:"H → Home page → Banners",      estimate:240, estimateLabel:"4h",    assignee:"Hagary"},
+  {id:7,  name:"U → Review",                   estimate:180, estimateLabel:"1h+2h", assignee:"Usef"},
+  {id:8,  name:"Category page",                 estimate:30,  estimateLabel:"30m",   assignee:"Osama"},
+  {id:9,  name:"Product page",                  estimate:60,  estimateLabel:"1h",    assignee:"Osama"},
+  {id:10, name:"Cart & Checkout",               estimate:30,  estimateLabel:"30m",   assignee:"Osama"},
+  {id:11, name:"Payment & Courier setup",       estimate:30,  estimateLabel:"~30m",  assignee:"Osama"},
+  {id:12, name:"Requirements (Req.)",           estimate:240, estimateLabel:"4h+",   assignee:"Osama"},
+  {id:13, name:"Upload products",               estimate:120, estimateLabel:"2h",    assignee:"Osama"},
+  {id:14, name:"Audit",                         estimate:120, estimateLabel:"2h",    assignee:"Osama"},
+  {id:15, name:"Client Review",                 estimate:0,   estimateLabel:"—",     assignee:"Client"},
+];
+const TOTAL_EST_MIN = TASKS_DEF.reduce((s,t)=>s+t.estimate,0);
+
+// State
+let projectId = null;
+let projectStartedAt = null; // ISO string stored in DB
+let projectFinished = false;
+let tasks = [];
+let activeTaskId = null;
+let projectTimer = null;
+let taskTickTimer = null;
+
+function pad(n){return String(n).padStart(2,'0');}
+function fmtMs(ms){const s=Math.floor(ms/1000),h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sc=s%60;return `${pad(h)}:${pad(m)}:${pad(sc)}`;}
+function fmtMin(m){if(!m)return'—';const h=Math.floor(m/60),mn=m%60;return h&&mn?`${h}h ${mn}m`:h?`${h}h`:`${mn}m`;}
+function setSaving(s){const el=document.getElementById('savingIndicator');el.textContent=s==='saving'?'● saving…':s==='saved'?'✓ saved':s==='error'?'✗ error':'● connected';el.className=`saving-indicator ${s}`;}
+function showToast(msg,type=''){const t=document.getElementById('toast');t.textContent=msg;t.className=`toast ${type} show`;setTimeout(()=>t.className='toast',3000);}
+
+// Calculate elapsed for a task considering timer_started_at
+function taskElapsedMs(task) {
+  let e = task.elapsed_ms || 0;
+  if (task.timer_started_at) {
+    e += Date.now() - new Date(task.timer_started_at).getTime();
+  }
+  return e;
+}
+
+// Total project elapsed from DB start time
+function projectElapsedMs() {
+  if (!projectStartedAt) return 0;
+  return Date.now() - new Date(projectStartedAt).getTime();
+}
+
+// ── INIT: restore session from Supabase ──
+async function init() {
+  document.getElementById('loadingOverlay').classList.remove('hidden');
+  try {
+    // Find active project (started but not finished)
+    const { data: projects } = await sb.from('projects')
+      .select('*').is('finished_at', null).order('created_at', {ascending: false}).limit(1);
+
+    if (projects && projects.length > 0) {
+      const p = projects[0];
+      projectId = p.id;
+      projectStartedAt = p.started_at;
+      projectFinished = false;
+
+      // Load tasks
+      const { data: dbTasks } = await sb.from('tasks').select('*').eq('project_id', projectId);
+
+      tasks = TASKS_DEF.map(def => {
+        const saved = dbTasks ? dbTasks.find(t => t.id === def.id) : null;
+        return {
+          ...def,
+          done: saved ? saved.done : false,
+          elapsed_ms: saved ? (saved.elapsed_ms || 0) : 0,
+          timer_started_at: saved ? saved.timer_started_at : null,
+        };
+      });
+
+      // Find active task (one with timer_started_at set)
+      const activeTask = tasks.find(t => t.timer_started_at);
+      activeTaskId = activeTask ? activeTask.id : null;
+
+      document.getElementById('projectName').value = p.name;
+      document.getElementById('statusDot').className = 'status-dot running';
+      document.getElementById('statusText').textContent = `Running — ${p.name}`;
+      document.getElementById('elapsedDisplay').classList.add('running');
+      startTimers();
+      showToast('✓ Session restored!', 'green');
+    } else {
+      tasks = TASKS_DEF.map(def => ({...def, done:false, elapsed_ms:0, timer_started_at:null}));
+    }
+  } catch(e) {
+    console.error(e);
+    tasks = TASKS_DEF.map(def => ({...def, done:false, elapsed_ms:0, timer_started_at:null}));
+  }
+
+  document.getElementById('estimatedDisplay').textContent = fmtMin(TOTAL_EST_MIN);
+  renderTasks();
+  updateProgress();
+  document.getElementById('loadingOverlay').classList.add('hidden');
+}
+
+function startTimers() {
+  if (projectTimer) clearInterval(projectTimer);
+  if (taskTickTimer) clearInterval(taskTickTimer);
+  projectTimer = setInterval(updateProjectTimer, 1000);
+  taskTickTimer = setInterval(updateActiveTaskDisplay, 1000);
+}
+
+function updateProjectTimer() {
+  const elapsed = projectElapsedMs();
+  document.getElementById('elapsedDisplay').textContent = fmtMs(elapsed);
+  const elapsedMin = elapsed / 60000;
+  const remain = TOTAL_EST_MIN - elapsedMin;
+  const rd = document.getElementById('remainDisplay');
+  rd.textContent = remain > 0 ? fmtMin(Math.round(remain)) : `+${fmtMin(Math.round(-remain))} over`;
+  rd.style.color = remain > 0 ? 'var(--green)' : 'var(--accent2)';
+}
+
+function updateActiveTaskDisplay() {
+  if (!activeTaskId) return;
+  const task = tasks.find(t => t.id === activeTaskId);
+  if (!task) return;
+  const el = document.getElementById(`task-elapsed-${activeTaskId}`);
+  if (el) el.textContent = fmtMs(taskElapsedMs(task));
+}
+
+async function startProject() {
+  const name = document.getElementById('projectName').value.trim();
+  if (!name) { showToast('⚠ Enter a project name first', 'red'); return; }
+  if (projectId) { showToast('Project already running!'); return; }
+
+  projectStartedAt = new Date().toISOString();
+  setSaving('saving');
+  const { data, error } = await sb.from('projects').insert([{name, started_at: projectStartedAt}]).select().single();
+  if (error) { setSaving('error'); showToast('DB error: ' + error.message, 'red'); return; }
+  projectId = data.id;
+
+  // Insert all tasks
+  const rows = tasks.map(t => ({id:t.id, project_id:projectId, name:t.name, assignee:t.assignee, estimate_min:t.estimate, estimate_label:t.estimateLabel, done:false, elapsed_ms:0, timer_started_at:null}));
+  await sb.from('tasks').insert(rows);
+  setSaving('saved'); setTimeout(()=>setSaving(''), 2000);
+
+  document.getElementById('statusDot').className = 'status-dot running';
+  document.getElementById('statusText').textContent = `Running — ${name}`;
+  document.getElementById('elapsedDisplay').classList.add('running');
+  document.getElementById('summaryPanel').style.display = 'none';
+  startTimers();
+  showToast(`▶ Project "${name}" started!`, 'green');
+}
+
+async function toggleTaskTimer(id, e) {
+  e.stopPropagation();
+  if (!projectId) { showToast('Start the project first!', 'red'); return; }
+  const task = tasks.find(t => t.id === id);
+  if (!task || task.done) return;
+
+  if (task.timer_started_at) {
+    // Stop this task
+    const extra = Date.now() - new Date(task.timer_started_at).getTime();
+    task.elapsed_ms += extra;
+    task.timer_started_at = null;
+    activeTaskId = null;
+    setSaving('saving');
+    await sb.from('tasks').update({elapsed_ms: task.elapsed_ms, timer_started_at: null}).eq('id', id).eq('project_id', projectId);
+    setSaving('saved'); setTimeout(()=>setSaving(''), 2000);
+  } else {
+    // Stop any other running task first
+    for (const t of tasks) {
+      if (t.timer_started_at) {
+        const extra = Date.now() - new Date(t.timer_started_at).getTime();
+        t.elapsed_ms += extra;
+        t.timer_started_at = null;
+        await sb.from('tasks').update({elapsed_ms: t.elapsed_ms, timer_started_at: null}).eq('id', t.id).eq('project_id', projectId);
+      }
+    }
+    // Start this task — save timer_started_at to DB so it survives refresh/close
+    task.timer_started_at = new Date().toISOString();
+    activeTaskId = id;
+    setSaving('saving');
+    await sb.from('tasks').update({timer_started_at: task.timer_started_at}).eq('id', id).eq('project_id', projectId);
+    setSaving('saved'); setTimeout(()=>setSaving(''), 2000);
+  }
+  renderTasks();
+}
+
+async function toggleTask(id) {
+  if (!projectId) { showToast('Start the project first!', 'red'); return; }
+  const task = tasks.find(t => t.id === id);
+  if (!task) return;
+
+  // If stopping a running timer, save elapsed first
+  if (task.timer_started_at) {
+    const extra = Date.now() - new Date(task.timer_started_at).getTime();
+    task.elapsed_ms += extra;
+    task.timer_started_at = null;
+    if (activeTaskId === id) activeTaskId = null;
+  }
+
+  task.done = !task.done;
+  setSaving('saving');
+  await sb.from('tasks').update({done: task.done, elapsed_ms: task.elapsed_ms, timer_started_at: null}).eq('id', id).eq('project_id', projectId);
+  setSaving('saved'); setTimeout(()=>setSaving(''), 2000);
+  renderTasks(); updateProgress();
+}
+
+async function finishProject() {
+  if (!projectId) { showToast('No project running', 'red'); return; }
+
+  // Stop any active task timer
+  for (const t of tasks) {
+    if (t.timer_started_at) {
+      const extra = Date.now() - new Date(t.timer_started_at).getTime();
+      t.elapsed_ms += extra;
+      t.timer_started_at = null;
+      await sb.from('tasks').update({elapsed_ms: t.elapsed_ms, timer_started_at: null}).eq('id', t.id).eq('project_id', projectId);
+    }
+  }
+
+  const finishedAt = new Date().toISOString();
+  setSaving('saving');
+  await sb.from('projects').update({finished_at: finishedAt}).eq('id', projectId);
+  setSaving('saved');
+
+  clearInterval(projectTimer); clearInterval(taskTickTimer);
+  projectFinished = true;
+  activeTaskId = null;
+  document.getElementById('statusDot').className = 'status-dot done';
+  document.getElementById('statusText').textContent = 'Completed ✓';
+  document.getElementById('elapsedDisplay').classList.remove('running');
+  renderSummary();
+  showToast('■ Project finished & saved!');
+}
+
+async function resetAll() {
+  // Stop any running task in DB
+  if (projectId && !projectFinished) {
+    for (const t of tasks) {
+      if (t.timer_started_at) {
+        const extra = Date.now() - new Date(t.timer_started_at).getTime();
+        t.elapsed_ms += extra;
+        await sb.from('tasks').update({elapsed_ms: t.elapsed_ms, timer_started_at: null}).eq('id', t.id).eq('project_id', projectId);
+      }
+    }
+  }
+  clearInterval(projectTimer); clearInterval(taskTickTimer);
+  projectId = null; projectStartedAt = null; projectFinished = false; activeTaskId = null;
+  tasks = TASKS_DEF.map(def => ({...def, done:false, elapsed_ms:0, timer_started_at:null}));
+  document.getElementById('statusDot').className = 'status-dot';
+  document.getElementById('statusText').textContent = 'Not started';
+  document.getElementById('elapsedDisplay').textContent = '00:00:00';
+  document.getElementById('elapsedDisplay').classList.remove('running');
+  document.getElementById('remainDisplay').textContent = '—';
+  document.getElementById('remainDisplay').style.color = 'var(--muted)';
+  document.getElementById('summaryPanel').style.display = 'none';
+  document.getElementById('projectName').value = '';
+  renderTasks(); updateProgress();
+  showToast('↺ Reset complete');
+}
+
+function renderTasks() {
+  const list = document.getElementById('taskList'); list.innerHTML = '';
+  tasks.forEach(task => {
+    const elapsed = taskElapsedMs(task);
+    const elapsedMin = elapsed / 60000;
+    const over = task.estimate > 0 && elapsedMin > task.estimate;
+    const isRunning = !!task.timer_started_at;
+    const card = document.createElement('div');
+    card.className = `task-card${task.done?' done':isRunning?' active':''}`;
+    card.onclick = () => toggleTask(task.id);
+    card.innerHTML = `
+      <div class="task-check">${task.done?'✓':isRunning?'▶':''}</div>
+      <div class="task-info">
+        <span class="task-name">${task.name}</span>
+        <span class="task-meta">${task.assignee}</span>
+      </div>
+      <div class="task-right">
+        <span class="task-estimate">${task.estimateLabel}</span>
+        <span class="task-elapsed" id="task-elapsed-${task.id}" style="${over?'color:var(--accent2)':''}">${elapsed>0?fmtMs(elapsed):''}</span>
+        ${!task.done?`<button class="task-btn ${isRunning?'running':''}" onclick="toggleTaskTimer(${task.id},event)">${isRunning?'⏸ Stop':'⏱ Start'}</button>`:''}
+      </div>`;
+    list.appendChild(card);
+  });
+  updateProgress();
+}
+
+function updateProgress() {
+  const done = tasks.filter(t=>t.done).length, total = tasks.length;
+  const pct = Math.round((done/total)*100);
+  document.getElementById('progressFill').style.width = pct+'%';
+  document.getElementById('progressPct').textContent = pct+'%';
+  document.getElementById('taskCount').textContent = `${done} / ${total} done`;
+}
+
+function renderSummary() {
+  const totalMs = projectElapsedMs();
+  const totalMin = totalMs / 60000;
+  const done = tasks.filter(t=>t.done).length;
+  const diff = totalMin - TOTAL_EST_MIN;
+  document.getElementById('sumTotal').textContent = fmtMs(totalMs);
+  document.getElementById('sumEstimate').textContent = fmtMin(TOTAL_EST_MIN);
+  document.getElementById('sumDone').textContent = `${done} / ${tasks.length}`;
+  const diffEl = document.getElementById('sumDiff');
+  if (diff>0){diffEl.textContent=`+${fmtMin(Math.round(diff))} over`;diffEl.style.color='var(--accent2)';}
+  else{diffEl.textContent=`-${fmtMin(Math.round(-diff))} under`;diffEl.style.color='var(--green)';}
+  const log = document.getElementById('logList'); log.innerHTML = '';
+  tasks.forEach(t => {
+    const e = taskElapsedMs(t); if(e===0&&!t.done) return;
+    const over = t.estimate>0 && (e/60000)>t.estimate;
+    const row = document.createElement('div'); row.className='log-entry';
+    row.innerHTML=`<span class="log-task">${t.done?'✓':'○'} ${t.name}</span><span class="log-time ${over?'over':''}">${e>0?fmtMs(e):t.done?'done':'—'}</span>`;
+    log.appendChild(row);
+  });
+  document.getElementById('summaryPanel').style.display = 'block';
+}
+
+init();
+</script>
+</body>
+</html>
