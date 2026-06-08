@@ -281,7 +281,7 @@ let activityLog=[];
 function pad(n){return String(n).padStart(2,'0');}
 function fmtMs(ms){if(ms<0)ms=0;const s=Math.floor(ms/1000),h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sc=s%60;return`${pad(h)}:${pad(m)}:${pad(sc)}`;}
 function fmtMin(m){if(!m&&m!==0)return'—';const h=Math.floor(m/60),mn=m%60;return h&&mn?`${h}h ${mn}m`:h?`${h}h`:`${mn}m`;}
-function fmtTime(iso){const d=new Date(iso);return d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit',second:'2-digit'});}
+function fmtTime(iso){const d=new Date(iso);return d.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:true,timeZone:'Africa/Cairo'});}
 function setSaving(s){const el=document.getElementById('savingIndicator');el.textContent=s==='saving'?'● saving…':s==='saved'?'✓ saved':s==='error'?'✗ error':'● connected';el.className=`saving-indicator ${s}`;}
 function showToast(msg,type=''){const t=document.getElementById('toast');t.textContent=msg;t.className=`toast ${type} show`;setTimeout(()=>t.className='toast',3000);}
 
