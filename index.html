@@ -102,6 +102,12 @@
   .task-btn{padding:6px 12px;border-radius:5px;font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:500;cursor:pointer;border:1px solid var(--border);background:transparent;color:var(--muted);transition:all 0.15s;white-space:nowrap;}
   .task-btn:hover{color:var(--text);border-color:var(--accent);}
   .task-btn.running{color:var(--green);border-color:var(--green);background:rgba(0,229,160,0.08);}
+  .drag-handle{cursor:grab;color:var(--muted);font-size:16px;padding:0 4px;user-select:none;flex-shrink:0;}
+  .drag-handle:active{cursor:grabbing;}
+  .task-card.dragging{opacity:0.4;border-style:dashed;}
+  .task-card.drag-over{border-color:var(--accent);background:rgba(108,99,255,0.08);}
+  .btn-delete{padding:4px 8px;border-radius:4px;font-size:12px;cursor:pointer;border:1px solid transparent;background:transparent;color:var(--muted);transition:all 0.15s;line-height:1;}
+  .btn-delete:hover{color:var(--accent2);border-color:var(--accent2);background:rgba(255,107,107,0.08);}
 
   .summary{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:24px;margin-top:12px;}
   .summary-title{font-family:'Syne',sans-serif;font-size:13px;font-weight:700;letter-spacing:3px;text-transform:uppercase;color:var(--muted);margin-bottom:20px;}
@@ -575,6 +581,8 @@ async function resetAll(){
   showToast('↺ Reset complete');
 }
 
+let dragSrcId=null;
+
 function renderTasks(){
   const list=document.getElementById('taskList');list.innerHTML='';
   tasks.forEach(task=>{
@@ -583,10 +591,12 @@ function renderTasks(){
     const isRunning=!!task.timer_started_at&&!isPaused;
     const card=document.createElement('div');
     card.className=`task-card${task.done?' done':isRunning?' active':''}`;
-    card.onclick=()=>toggleTask(task.id);
+    card.dataset.id=task.id;
+    card.draggable=true;
     card.innerHTML=`
-      <div class="task-check">${task.done?'✓':isRunning?'▶':''}</div>
-      <div class="task-info">
+      <div class="drag-handle" title="Drag to reorder">⠿</div>
+      <div class="task-check" onclick="event.stopPropagation();toggleTask(${task.id})">${task.done?'✓':isRunning?'▶':''}</div>
+      <div class="task-info" onclick="toggleTask(${task.id})">
         <span class="task-name">${task.name}</span>
         <span class="task-meta">${task.assignee}</span>
       </div>
@@ -594,10 +604,62 @@ function renderTasks(){
         <span class="task-estimate">${task.estimateLabel}</span>
         <span class="task-elapsed" id="task-elapsed-${task.id}" style="${over?'color:var(--accent2)':''}">${elapsed>0?fmtMs(elapsed):''}</span>
         ${!task.done&&!isPaused?`<button class="task-btn ${isRunning?'running':''}" onclick="toggleTaskTimer(${task.id},event)">${isRunning?'⏸ Stop':'⏱ Start'}</button>`:''}
+        <button class="btn-delete" onclick="deleteTask(${task.id},event)" title="Delete task">🗑</button>
       </div>`;
+    // Drag events
+    card.addEventListener('dragstart',e=>{
+      dragSrcId=task.id;
+      setTimeout(()=>card.classList.add('dragging'),0);
+      e.dataTransfer.effectAllowed='move';
+    });
+    card.addEventListener('dragend',()=>{ card.classList.remove('dragging'); document.querySelectorAll('.task-card').forEach(c=>c.classList.remove('drag-over')); });
+    card.addEventListener('dragover',e=>{ e.preventDefault(); e.dataTransfer.dropEffect='move'; card.classList.add('drag-over'); });
+    card.addEventListener('dragleave',()=>card.classList.remove('drag-over'));
+    card.addEventListener('drop',e=>{
+      e.preventDefault(); card.classList.remove('drag-over');
+      if(dragSrcId===task.id)return;
+      const fromIdx=tasks.findIndex(t=>t.id===dragSrcId);
+      const toIdx=tasks.findIndex(t=>t.id===task.id);
+      if(fromIdx<0||toIdx<0)return;
+      const moved=tasks.splice(fromIdx,1)[0];
+      tasks.splice(toIdx,0,moved);
+      renderTasks();
+      saveTaskOrder();
+    });
     list.appendChild(card);
   });
   updateProgress();
+}
+
+async function saveTaskOrder(){
+  if(!projectId)return;
+  setSaving('saving');
+  for(let i=0;i<tasks.length;i++){
+    await sb.from('tasks').update({id: tasks[i].id}).eq('id', tasks[i].id).eq('project_id', projectId);
+  }
+  setSaving('saved');setTimeout(()=>setSaving(''),2000);
+}
+
+async function deleteTask(id,e){
+  e.stopPropagation();
+  if(!confirm('Delete this task?'))return;
+  const task=tasks.find(t=>t.id===id);
+  if(!task)return;
+  if(task.timer_started_at){
+    const extra=Date.now()-new Date(task.timer_started_at).getTime();
+    task.elapsed_ms+=extra; task.timer_started_at=null;
+    if(activeTaskId===id)activeTaskId=null;
+  }
+  tasks=tasks.filter(t=>t.id!==id);
+  if(projectId){
+    setSaving('saving');
+    await sb.from('tasks').delete().eq('id',id).eq('project_id',projectId);
+    setSaving('saved');setTimeout(()=>setSaving(''),2000);
+    logActivity(`🗑 Deleted: "${task.name}"`);
+  }
+  document.getElementById('estimatedDisplay').textContent=fmtMin(totalEstMin());
+  renderTasks();updateProgress();
+  showToast(`🗑 Task deleted`,'red');
 }
 
 function updateProgress(){
