@@ -1,0 +1,703 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Wasla Solutions – Project Tracker</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root {
+    --bg:#0a0a0f;--surface:#12121a;--surface2:#1a1a26;--border:#2a2a3d;
+    --accent:#6c63ff;--accent2:#ff6b6b;--green:#00e5a0;--yellow:#ffd166;
+    --text:#e8e8f0;--muted:#6b6b8a;--done-bg:#0d1f18;--pause:#f4a261;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{background:var(--bg);color:var(--text);font-family:'IBM Plex Mono',monospace;min-height:100vh;}
+  body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(rgba(108,99,255,0.04) 1px,transparent 1px),linear-gradient(90deg,rgba(108,99,255,0.04) 1px,transparent 1px);background-size:40px 40px;pointer-events:none;z-index:0;}
+  .container{max-width:940px;margin:0 auto;padding:40px 20px 80px;position:relative;z-index:1;}
+  .header{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:40px;flex-wrap:wrap;gap:16px;}
+  .brand-name{font-family:'Syne',sans-serif;font-size:11px;font-weight:700;letter-spacing:4px;text-transform:uppercase;color:var(--accent);}
+  .brand-title{font-family:'Syne',sans-serif;font-size:28px;font-weight:800;color:var(--text);line-height:1.1;}
+  .team-badges{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+  .badge{padding:6px 14px;border-radius:4px;font-size:11px;font-weight:500;letter-spacing:1px;text-transform:uppercase;border:1px solid var(--border);background:var(--surface);color:var(--muted);}
+  .badge.active{background:rgba(108,99,255,0.15);border-color:var(--accent);color:var(--accent);}
+  .manager-link{padding:6px 14px;border-radius:4px;font-size:11px;font-weight:500;letter-spacing:1px;text-transform:uppercase;border:1px solid var(--green);background:rgba(0,229,160,0.08);color:var(--green);text-decoration:none;}
+
+  .project-bar{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px 24px;margin-bottom:28px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px;}
+  .project-label{font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:4px;}
+  .project-name-input{background:transparent;border:none;color:var(--text);font-family:'Syne',sans-serif;font-size:18px;font-weight:700;outline:none;width:260px;border-bottom:1px dashed var(--border);padding-bottom:2px;}
+  .project-name-input::placeholder{color:var(--muted);}
+  .project-controls{display:flex;gap:8px;flex-wrap:wrap;}
+  .btn{padding:10px 18px;border-radius:6px;font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:500;cursor:pointer;border:none;transition:all 0.15s ease;}
+  .btn-start{background:var(--green);color:#000;}.btn-start:hover{background:#00c88c;transform:translateY(-1px);}
+  .btn-pause{background:var(--pause);color:#000;}.btn-pause:hover{background:#e8934f;transform:translateY(-1px);}
+  .btn-finish{background:var(--accent2);color:#fff;}.btn-finish:hover{background:#e85555;transform:translateY(-1px);}
+  .btn-reset{background:var(--surface2);color:var(--muted);border:1px solid var(--border);}.btn-reset:hover{color:var(--text);}
+  .saving-indicator{font-size:10px;color:var(--muted);letter-spacing:1px;}
+  .saving-indicator.saving{color:var(--yellow);}.saving-indicator.saved{color:var(--green);}.saving-indicator.error{color:var(--accent2);}
+
+  .timer-strip{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:16px 24px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;}
+  .timer-block{display:flex;flex-direction:column;align-items:center;gap:4px;}
+  .timer-val{font-family:'Syne',sans-serif;font-size:24px;font-weight:800;color:var(--accent);font-variant-numeric:tabular-nums;letter-spacing:2px;}
+  .timer-val.running{color:var(--green);animation:pulse 2s ease-in-out infinite;}
+  .timer-val.paused{color:var(--pause);}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.6}}
+  .timer-label{font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);}
+  .status-dot{width:8px;height:8px;border-radius:50%;background:var(--muted);display:inline-block;margin-right:8px;}
+  .status-dot.running{background:var(--green);box-shadow:0 0 8px var(--green);animation:blink 1.2s ease-in-out infinite;}
+  .status-dot.paused{background:var(--pause);box-shadow:0 0 8px var(--pause);}
+  .status-dot.done{background:var(--accent2);}
+  @keyframes blink{0%,100%{opacity:1}50%{opacity:0.3}}
+  .status-text{font-size:12px;color:var(--muted);}
+
+  /* Activity log strip */
+  .activity-strip{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 20px;margin-bottom:28px;max-height:100px;overflow-y:auto;}
+  .activity-entry{font-size:11px;color:var(--muted);display:flex;gap:10px;padding:3px 0;border-bottom:1px solid rgba(42,42,61,0.4);}
+  .activity-entry:last-child{border-bottom:none;}
+  .activity-time{color:var(--accent);flex-shrink:0;font-size:10px;}
+  .activity-msg{color:var(--text);}
+
+  .progress-wrap{margin-bottom:28px;}
+  .progress-header{display:flex;justify-content:space-between;margin-bottom:8px;font-size:11px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;}
+  .progress-bar{height:6px;background:var(--surface2);border-radius:99px;overflow:hidden;}
+  .progress-fill{height:100%;background:linear-gradient(90deg,var(--accent),var(--green));border-radius:99px;transition:width 0.4s ease;}
+
+  .section-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--border);}
+  .section-left{display:flex;align-items:center;gap:12px;}
+  .section-title{font-family:'Syne',sans-serif;font-size:12px;font-weight:700;letter-spacing:3px;text-transform:uppercase;color:var(--muted);}
+  .section-count{font-size:11px;color:var(--accent);background:rgba(108,99,255,0.12);padding:2px 8px;border-radius:20px;}
+
+  /* Add task form */
+  .add-task-form{background:var(--surface);border:1px dashed var(--border);border-radius:10px;padding:16px 18px;margin-bottom:10px;display:none;gap:10px;flex-wrap:wrap;align-items:flex-end;}
+  .add-task-form.open{display:flex;}
+  .form-field{display:flex;flex-direction:column;gap:6px;}
+  .form-label{font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);}
+  .form-input{background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 12px;color:var(--text);font-family:'IBM Plex Mono',monospace;font-size:13px;outline:none;transition:border-color 0.15s;}
+  .form-input:focus{border-color:var(--accent);}
+  .form-input.wide{width:220px;}
+  .form-input.small{width:80px;}
+  .btn-add-confirm{background:var(--accent);color:#fff;padding:9px 16px;border-radius:6px;font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:500;cursor:pointer;border:none;}
+  .btn-add-confirm:hover{background:#5a52e0;}
+  .btn-add-cancel{background:transparent;color:var(--muted);padding:9px 12px;border-radius:6px;font-family:'IBM Plex Mono',monospace;font-size:12px;cursor:pointer;border:1px solid var(--border);}
+  .btn-open-add{padding:5px 12px;border-radius:4px;font-family:'IBM Plex Mono',monospace;font-size:11px;cursor:pointer;border:1px solid var(--border);background:transparent;color:var(--muted);transition:all 0.15s;}
+  .btn-open-add:hover{color:var(--accent);border-color:var(--accent);}
+
+  .task-list{display:flex;flex-direction:column;gap:8px;margin-bottom:32px;}
+  .task-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 18px;display:flex;align-items:center;gap:14px;cursor:pointer;transition:all 0.2s ease;position:relative;overflow:hidden;}
+  .task-card:hover{border-color:var(--accent);background:var(--surface2);}
+  .task-card.active{border-color:var(--green);background:rgba(0,229,160,0.05);}
+  .task-card.active::before,.task-card.done::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--green);}
+  .task-card.done{background:var(--done-bg);border-color:rgba(0,229,160,0.2);opacity:0.7;}
+  .task-check{width:22px;height:22px;border-radius:6px;border:2px solid var(--border);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:13px;transition:all 0.2s;}
+  .task-card.done .task-check{background:var(--green);border-color:var(--green);color:#000;}
+  .task-card.active .task-check{border-color:var(--green);background:rgba(0,229,160,0.2);color:var(--green);}
+  .task-info{flex:1;display:flex;flex-direction:column;gap:2px;}
+  .task-name{font-family:'Syne',sans-serif;font-size:14px;font-weight:600;color:var(--text);}
+  .task-card.done .task-name{text-decoration:line-through;color:var(--muted);}
+  .task-meta{font-size:10px;color:var(--muted);}
+  .task-right{display:flex;flex-direction:column;align-items:flex-end;gap:4px;}
+  .task-estimate{font-size:11px;color:var(--yellow);background:rgba(255,209,102,0.1);padding:3px 9px;border-radius:4px;font-weight:500;white-space:nowrap;}
+  .task-elapsed{font-size:10px;color:var(--green);}
+  .task-btn{padding:6px 12px;border-radius:5px;font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:500;cursor:pointer;border:1px solid var(--border);background:transparent;color:var(--muted);transition:all 0.15s;white-space:nowrap;}
+  .task-btn:hover{color:var(--text);border-color:var(--accent);}
+  .task-btn.running{color:var(--green);border-color:var(--green);background:rgba(0,229,160,0.08);}
+  .drag-handle{cursor:grab;color:var(--muted);font-size:16px;padding:0 4px;user-select:none;flex-shrink:0;}
+  .drag-handle:active{cursor:grabbing;}
+  .task-card.dragging{opacity:0.4;border-style:dashed;}
+  .task-card.drag-over{border-color:var(--accent);background:rgba(108,99,255,0.08);}
+  .btn-delete{padding:4px 8px;border-radius:4px;font-size:12px;cursor:pointer;border:1px solid transparent;background:transparent;color:var(--muted);transition:all 0.15s;line-height:1;}
+  .btn-delete:hover{color:var(--accent2);border-color:var(--accent2);background:rgba(255,107,107,0.08);}
+
+  .summary{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:24px;margin-top:12px;}
+  .summary-title{font-family:'Syne',sans-serif;font-size:13px;font-weight:700;letter-spacing:3px;text-transform:uppercase;color:var(--muted);margin-bottom:20px;}
+  .summary-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:16px;margin-bottom:20px;}
+  .summary-stat{display:flex;flex-direction:column;gap:6px;}
+  .stat-val{font-family:'Syne',sans-serif;font-size:22px;font-weight:800;}
+  .stat-label{font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);}
+  .log-list{max-height:200px;overflow-y:auto;border-top:1px solid var(--border);padding-top:16px;margin-top:4px;display:flex;flex-direction:column;gap:6px;}
+  .log-entry{display:flex;justify-content:space-between;font-size:11px;}
+  .log-task{color:var(--text);}.log-time{color:var(--green);}.log-time.over{color:var(--accent2);}
+
+  .toast{position:fixed;bottom:30px;left:50%;transform:translateX(-50%) translateY(80px);background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:14px 24px;font-size:13px;color:var(--text);transition:transform 0.3s ease;z-index:100;white-space:nowrap;}
+  .toast.show{transform:translateX(-50%) translateY(0);}
+  .toast.green{border-color:var(--green);color:var(--green);}
+  .toast.red{border-color:var(--accent2);color:var(--accent2);}
+  .toast.orange{border-color:var(--pause);color:var(--pause);}
+
+  .loading-overlay{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:200;flex-direction:column;gap:16px;}
+  .loading-overlay.hidden{display:none;}
+  .loading-spinner{width:32px;height:32px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 0.8s linear infinite;}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .loading-text{font-size:12px;color:var(--muted);letter-spacing:2px;}
+</style>
+</head>
+<body>
+<div class="loading-overlay" id="loadingOverlay">
+  <div class="loading-spinner"></div>
+  <div class="loading-text">RESTORING SESSION…</div>
+</div>
+
+<div class="container">
+  <div class="header">
+    <div>
+      <div class="brand-name">Wasla Solutions</div>
+      <div class="brand-title">Project Tracker</div>
+    </div>
+    <div class="team-badges">
+      <span class="badge active">Osama</span>
+      <span class="badge">Usef</span>
+      <span class="badge">Hagary</span>
+      <span class="badge">Client</span>
+      <a class="manager-link" href="manager.html" target="_blank">👁 Manager View</a>
+    </div>
+  </div>
+
+  <div class="project-bar">
+    <div>
+      <div class="project-label">Project Name</div>
+      <input class="project-name-input" id="projectName" placeholder="Enter client / project name…" />
+    </div>
+    <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end;">
+      <div class="project-controls">
+        <button class="btn btn-start" id="btnStart" onclick="startProject()">▶ Start</button>
+        <button class="btn btn-pause" id="btnPause" onclick="togglePause()" style="display:none">⏸ Pause</button>
+        <button class="btn btn-finish" onclick="finishProject()">■ Finish</button>
+        <button class="btn btn-reset" onclick="resetAll()">↺ Reset</button>
+      </div>
+      <span class="saving-indicator" id="savingIndicator">● connected</span>
+    </div>
+  </div>
+
+  <div class="timer-strip">
+    <div style="display:flex;align-items:center;gap:8px;">
+      <span class="status-dot" id="statusDot"></span>
+      <span class="status-text" id="statusText">Not started</span>
+    </div>
+    <div style="display:flex;gap:24px;flex-wrap:wrap;">
+      <div class="timer-block">
+        <span class="timer-val" id="elapsedDisplay">00:00:00</span>
+        <span class="timer-label">Active Time</span>
+      </div>
+      <div class="timer-block">
+        <span class="timer-val" style="color:var(--pause)" id="pausedDisplay">00:00:00</span>
+        <span class="timer-label">Paused Time</span>
+      </div>
+      <div class="timer-block">
+        <span class="timer-val" style="color:var(--yellow)" id="estimatedDisplay">—</span>
+        <span class="timer-label">Estimated</span>
+      </div>
+      <div class="timer-block">
+        <span class="timer-val" style="color:var(--muted)" id="remainDisplay">—</span>
+        <span class="timer-label">Remaining</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Activity Log -->
+  <div class="activity-strip" id="activityStrip">
+    <div class="activity-entry"><span class="activity-time">—</span><span class="activity-msg">Activity log will appear here once project starts</span></div>
+  </div>
+
+  <div class="progress-wrap">
+    <div class="progress-header"><span>Completion</span><span id="progressPct">0%</span></div>
+    <div class="progress-bar"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
+  </div>
+
+  <div class="section-header">
+    <div class="section-left">
+      <span class="section-title">Tasks</span>
+      <span class="section-count" id="taskCount">0 / 0 done</span>
+    </div>
+    <button class="btn-open-add" onclick="toggleAddForm()">+ Add Task</button>
+  </div>
+
+  <!-- Add task form -->
+  <div class="add-task-form" id="addTaskForm">
+    <div class="form-field">
+      <span class="form-label">Task Name</span>
+      <input class="form-input wide" id="newTaskName" placeholder="e.g. Mobile responsive…" />
+    </div>
+    <div class="form-field">
+      <span class="form-label">Assignee</span>
+      <input class="form-input small" id="newTaskAssignee" placeholder="Osama" />
+    </div>
+    <div class="form-field">
+      <span class="form-label">Est. (min)</span>
+      <input class="form-input small" id="newTaskEstimate" type="number" placeholder="60" min="0" />
+    </div>
+    <div style="display:flex;gap:8px;align-items:flex-end;">
+      <button class="btn-add-confirm" onclick="addTask()">✓ Add</button>
+      <button class="btn-add-cancel" onclick="toggleAddForm()">Cancel</button>
+    </div>
+  </div>
+
+  <div class="task-list" id="taskList"></div>
+
+  <div class="summary" id="summaryPanel" style="display:none">
+    <div class="summary-title">📊 Project Summary</div>
+    <div class="summary-grid">
+      <div class="summary-stat"><span class="stat-val" style="color:var(--green)" id="sumActive">—</span><span class="stat-label">Active Time</span></div>
+      <div class="summary-stat"><span class="stat-val" style="color:var(--pause)" id="sumPaused">—</span><span class="stat-label">Paused Time</span></div>
+      <div class="summary-stat"><span class="stat-val" style="color:var(--yellow)" id="sumEstimate">—</span><span class="stat-label">Estimated</span></div>
+      <div class="summary-stat"><span class="stat-val" style="color:var(--accent)" id="sumDone">—</span><span class="stat-label">Tasks Done</span></div>
+      <div class="summary-stat"><span class="stat-val" id="sumDiff" style="color:var(--muted)">—</span><span class="stat-label">Over / Under</span></div>
+    </div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:10px;letter-spacing:1px;text-transform:uppercase;">Task Breakdown</div>
+    <div class="log-list" id="logList"></div>
+    <div style="font-size:11px;color:var(--muted);margin:16px 0 10px;letter-spacing:1px;text-transform:uppercase;">Activity Log</div>
+    <div class="log-list" id="summaryActivityLog"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const SUPABASE_URL='https://ohgmolrowdrjgtpptqif.supabase.co';
+const SUPABASE_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9oZ21vbHJvd2Ryamd0cHB0cWlmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA4Mzk4OTMsImV4cCI6MjA5NjQxNTg5M30.siVGJs-0D-zBG7hewGD4vTCTOoyHpsAd2SseYoVx0gg';
+const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+
+const DEFAULT_TASKS=[
+  {id:1, name:"Logo usable, branding",                      estimate:30,  estimateLabel:"30m",   assignee:"Osama"},
+  {id:2, name:"Theme requirements",                         estimate:60,  estimateLabel:"1h",    assignee:"Osama"},
+  {id:3, name:"Set up store (acc / C's acc)",            estimate:30,  estimateLabel:"30m",   assignee:"Osama"},
+  {id:4, name:"Connect theme",                              estimate:30,  estimateLabel:"30m",   assignee:"Osama"},
+  {id:5, name:"Home page sections",                         estimate:60,  estimateLabel:"1h",    assignee:"Osama"},
+  {id:6, name:"Decide all sections, content & copywriting", estimate:60,  estimateLabel:"1h",    assignee:"Marketer"},
+  {id:7, name:"Implement all sections",                     estimate:240, estimateLabel:"4h",    assignee:"Development"},
+  {id:8, name:"Banners, Buttons, Colors, Fonts",            estimate:120, estimateLabel:"2h",    assignee:"Designer"},
+  {id:9, name:"Home page Banners",                          estimate:240, estimateLabel:"4h",    assignee:"Hagary"},
+  {id:10,name:"U Review",                                   estimate:180, estimateLabel:"1h+2h", assignee:"Usef"},
+  {id:11,name:"Category page",                              estimate:30,  estimateLabel:"30m",   assignee:"Osama"},
+  {id:12,name:"Product page",                               estimate:60,  estimateLabel:"1h",    assignee:"Osama"},
+  {id:13,name:"Cart and Checkout",                          estimate:30,  estimateLabel:"30m",   assignee:"Osama"},
+  {id:14,name:"Payment and Courier setup",                  estimate:30,  estimateLabel:"~30m",  assignee:"Osama"},
+  {id:15,name:"Requirements",                               estimate:240, estimateLabel:"4h+",   assignee:"Osama"},
+  {id:16,name:"Upload products",                            estimate:120, estimateLabel:"2h",    assignee:"Osama"},
+  {id:17,name:"Audit",                                      estimate:120, estimateLabel:"2h",    assignee:"Osama"},
+  {id:18,name:"Client Review",                              estimate:0,   estimateLabel:"--",    assignee:"Client"},
+];
+
+let projectId=null, projectStartedAt=null, projectFinished=false;
+let isPaused=false, pausedAt=null, totalPausedMs=0;
+let tasks=[], activeTaskId=null, nextCustomId=100;
+let projectTimer=null, taskTickTimer=null;
+let activityLog=[];
+
+function pad(n){return String(n).padStart(2,'0');}
+function fmtMs(ms){if(ms<0)ms=0;const s=Math.floor(ms/1000),h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sc=s%60;return`${pad(h)}:${pad(m)}:${pad(sc)}`;}
+function fmtMin(m){if(!m&&m!==0)return'—';const h=Math.floor(m/60),mn=m%60;return h&&mn?`${h}h ${mn}m`:h?`${h}h`:`${mn}m`;}
+function fmtTime(iso){const d=new Date(iso);return d.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:true,timeZone:'Africa/Cairo'});}
+function setSaving(s){const el=document.getElementById('savingIndicator');el.textContent=s==='saving'?'● saving…':s==='saved'?'✓ saved':s==='error'?'✗ error':'● connected';el.className=`saving-indicator ${s}`;}
+function showToast(msg,type=''){const t=document.getElementById('toast');t.textContent=msg;t.className=`toast ${type} show`;setTimeout(()=>t.className='toast',3000);}
+
+function totalEstMin(){return tasks.reduce((s,t)=>s+t.estimate,0);}
+function taskElapsedMs(task){let e=task.elapsed_ms||0;if(task.timer_started_at&&!isPaused)e+=Date.now()-new Date(task.timer_started_at).getTime();return e;}
+function activeElapsedMs(){
+  if(!projectStartedAt)return 0;
+  let e=Date.now()-new Date(projectStartedAt).getTime()-totalPausedMs;
+  if(isPaused&&pausedAt)e-=(Date.now()-new Date(pausedAt).getTime());
+  return Math.max(0,e);
+}
+function currentPausedMs(){
+  let p=totalPausedMs;
+  if(isPaused&&pausedAt)p+=Date.now()-new Date(pausedAt).getTime();
+  return p;
+}
+
+function logActivity(msg){
+  const entry={time:new Date().toISOString(),msg};
+  activityLog.push(entry);
+  renderActivityStrip();
+  if(projectId) sb.from('activity_log').insert([{project_id:projectId,time:entry.time,msg:entry.msg}]).then(()=>{});
+}
+
+function renderActivityStrip(){
+  const el=document.getElementById('activityStrip');
+  if(activityLog.length===0){el.innerHTML='<div class="activity-entry"><span class="activity-time">—</span><span class="activity-msg">No activity yet</span></div>';return;}
+  el.innerHTML=[...activityLog].reverse().map(e=>`<div class="activity-entry"><span class="activity-time">${fmtTime(e.time)}</span><span class="activity-msg">${e.msg}</span></div>`).join('');
+}
+
+async function init(){
+  document.getElementById('loadingOverlay').classList.remove('hidden');
+
+  // Make sure activity_log table exists — create it silently via insert attempt
+  try{
+    const{data:projects}=await sb.from('projects').select('*').is('finished_at',null).order('created_at',{ascending:false}).limit(1);
+    if(projects&&projects.length>0){
+      const p=projects[0];
+      projectId=p.id; projectStartedAt=p.started_at; projectFinished=false;
+      isPaused=p.is_paused||false; pausedAt=p.paused_at||null; totalPausedMs=p.total_paused_ms||0;
+
+      const{data:dbTasks}=await sb.from('tasks').select('*').eq('project_id',projectId).order('id');
+      if(dbTasks&&dbTasks.length>0){
+        tasks=dbTasks.map(t=>({
+          id:t.id,name:t.name,assignee:t.assignee,estimate:t.estimate_min||0,
+          estimateLabel:t.estimate_label||'—',done:t.done||false,
+          elapsed_ms:t.elapsed_ms||0,timer_started_at:t.timer_started_at||null
+        }));
+        const maxId=Math.max(...tasks.map(t=>t.id),99);
+        nextCustomId=maxId+1;
+      } else {
+        tasks=DEFAULT_TASKS.map(t=>({...t,done:false,elapsed_ms:0,timer_started_at:null}));
+      }
+      activeTaskId=(tasks.find(t=>t.timer_started_at)||{id:null}).id;
+
+      // Load activity log
+      const{data:logs}=await sb.from('activity_log').select('*').eq('project_id',projectId).order('time');
+      if(logs)activityLog=logs.map(l=>({time:l.time,msg:l.msg}));
+
+      document.getElementById('projectName').value=p.name;
+      document.getElementById('statusDot').className=isPaused?'status-dot paused':'status-dot running';
+      document.getElementById('statusText').textContent=isPaused?`Paused — ${p.name}`:`Running — ${p.name}`;
+      document.getElementById('elapsedDisplay').classList.add(isPaused?'paused':'running');
+      document.getElementById('btnPause').style.display='';
+      document.getElementById('btnPause').textContent=isPaused?'▶ Resume':'⏸ Pause';
+      if(!isPaused)startTimers();else{updateProjectTimer();renderTasks();}
+      renderActivityStrip();
+      showToast('✓ Session restored!','green');
+    } else {
+      tasks=DEFAULT_TASKS.map(t=>({...t,done:false,elapsed_ms:0,timer_started_at:null}));
+    }
+  }catch(e){
+    console.error(e);
+    tasks=DEFAULT_TASKS.map(t=>({...t,done:false,elapsed_ms:0,timer_started_at:null}));
+  }
+  document.getElementById('estimatedDisplay').textContent=fmtMin(totalEstMin());
+  renderTasks();updateProgress();
+  document.getElementById('loadingOverlay').classList.add('hidden');
+}
+
+function startTimers(){
+  if(projectTimer)clearInterval(projectTimer);
+  if(taskTickTimer)clearInterval(taskTickTimer);
+  projectTimer=setInterval(updateProjectTimer,1000);
+  taskTickTimer=setInterval(updateActiveTaskDisplay,1000);
+}
+
+function updateProjectTimer(){
+  document.getElementById('elapsedDisplay').textContent=fmtMs(activeElapsedMs());
+  document.getElementById('pausedDisplay').textContent=fmtMs(currentPausedMs());
+  const remain=totalEstMin()-(activeElapsedMs()/60000);
+  const rd=document.getElementById('remainDisplay');
+  rd.textContent=remain>0?fmtMin(Math.round(remain)):`+${fmtMin(Math.round(-remain))} over`;
+  rd.style.color=remain>0?'var(--green)':'var(--accent2)';
+}
+
+function updateActiveTaskDisplay(){
+  if(!activeTaskId||isPaused)return;
+  const task=tasks.find(t=>t.id===activeTaskId);
+  if(!task)return;
+  const el=document.getElementById(`task-elapsed-${activeTaskId}`);
+  if(el)el.textContent=fmtMs(taskElapsedMs(task));
+}
+
+async function startProject(){
+  const name=document.getElementById('projectName').value.trim();
+  if(!name){showToast('⚠ Enter a project name first','red');return;}
+  if(projectId){showToast('Project already running!');return;}
+  projectStartedAt=new Date().toISOString();
+  setSaving('saving');
+  const{data,error}=await sb.from('projects').insert([{name,started_at:projectStartedAt,is_paused:false,paused_at:null,total_paused_ms:0}]).select().single();
+  if(error){setSaving('error');showToast('DB error: '+error.message,'red');return;}
+  projectId=data.id;
+  const rows=tasks.map(t=>({id:t.id,project_id:projectId,name:t.name,assignee:t.assignee,estimate_min:t.estimate,estimate_label:t.estimateLabel,done:false,elapsed_ms:0,timer_started_at:null}));
+  await sb.from('tasks').insert(rows);
+  setSaving('saved');setTimeout(()=>setSaving(''),2000);
+  document.getElementById('statusDot').className='status-dot running';
+  document.getElementById('statusText').textContent=`Running — ${name}`;
+  document.getElementById('elapsedDisplay').classList.add('running');
+  document.getElementById('btnPause').style.display='';
+  document.getElementById('btnPause').textContent='⏸ Pause';
+  document.getElementById('summaryPanel').style.display='none';
+  startTimers();
+  logActivity(`▶ Project started: "${name}"`);
+  showToast(`▶ Project "${name}" started!`,'green');
+}
+
+async function togglePause(){
+  if(!projectId){showToast('No project running','red');return;}
+  if(!isPaused){
+    // Pause
+    isPaused=true; pausedAt=new Date().toISOString();
+    // Stop any active task timer
+    for(const t of tasks){
+      if(t.timer_started_at){
+        const extra=Date.now()-new Date(t.timer_started_at).getTime();
+        t.elapsed_ms+=extra; t.timer_started_at=null;
+        await sb.from('tasks').update({elapsed_ms:t.elapsed_ms,timer_started_at:null}).eq('id',t.id).eq('project_id',projectId);
+      }
+    }
+    activeTaskId=null;
+    clearInterval(projectTimer);clearInterval(taskTickTimer);
+    await sb.from('projects').update({is_paused:true,paused_at:pausedAt}).eq('id',projectId);
+    document.getElementById('statusDot').className='status-dot paused';
+    document.getElementById('statusText').textContent=`Paused — ${document.getElementById('projectName').value}`;
+    document.getElementById('elapsedDisplay').classList.remove('running');
+    document.getElementById('elapsedDisplay').classList.add('paused');
+    document.getElementById('btnPause').textContent='▶ Resume';
+    logActivity(`⏸ Project paused`);
+    showToast('⏸ Project paused','orange');
+    renderTasks();
+  } else {
+    // Resume
+    const pauseDuration=Date.now()-new Date(pausedAt).getTime();
+    totalPausedMs+=pauseDuration; isPaused=false; pausedAt=null;
+    await sb.from('projects').update({is_paused:false,paused_at:null,total_paused_ms:totalPausedMs}).eq('id',projectId);
+    document.getElementById('statusDot').className='status-dot running';
+    document.getElementById('statusText').textContent=`Running — ${document.getElementById('projectName').value}`;
+    document.getElementById('elapsedDisplay').classList.remove('paused');
+    document.getElementById('elapsedDisplay').classList.add('running');
+    document.getElementById('btnPause').textContent='⏸ Pause';
+    startTimers();
+    logActivity(`▶ Project resumed`);
+    showToast('▶ Project resumed','green');
+    renderTasks();
+  }
+}
+
+async function toggleTaskTimer(id,e){
+  e.stopPropagation();
+  if(!projectId){showToast('Start the project first!','red');return;}
+  if(isPaused){showToast('Resume the project first!','orange');return;}
+  const task=tasks.find(t=>t.id===id);
+  if(!task||task.done)return;
+  if(task.timer_started_at){
+    const extra=Date.now()-new Date(task.timer_started_at).getTime();
+    task.elapsed_ms+=extra; task.timer_started_at=null; activeTaskId=null;
+    setSaving('saving');
+    await sb.from('tasks').update({elapsed_ms:task.elapsed_ms,timer_started_at:null}).eq('id',id).eq('project_id',projectId);
+    setSaving('saved');setTimeout(()=>setSaving(''),2000);
+    logActivity(`⏸ Stopped: "${task.name}"`);
+  } else {
+    for(const t of tasks){
+      if(t.timer_started_at){
+        const extra=Date.now()-new Date(t.timer_started_at).getTime();
+        t.elapsed_ms+=extra; t.timer_started_at=null;
+        await sb.from('tasks').update({elapsed_ms:t.elapsed_ms,timer_started_at:null}).eq('id',t.id).eq('project_id',projectId);
+      }
+    }
+    task.timer_started_at=new Date().toISOString(); activeTaskId=id;
+    setSaving('saving');
+    await sb.from('tasks').update({timer_started_at:task.timer_started_at}).eq('id',id).eq('project_id',projectId);
+    setSaving('saved');setTimeout(()=>setSaving(''),2000);
+    logActivity(`⏱ Started: "${task.name}"`);
+  }
+  renderTasks();
+}
+
+async function toggleTask(id){
+  if(!projectId){showToast('Start the project first!','red');return;}
+  const task=tasks.find(t=>t.id===id);
+  if(!task)return;
+  if(task.timer_started_at){
+    const extra=Date.now()-new Date(task.timer_started_at).getTime();
+    task.elapsed_ms+=extra; task.timer_started_at=null;
+    if(activeTaskId===id)activeTaskId=null;
+  }
+  task.done=!task.done;
+  setSaving('saving');
+  await sb.from('tasks').update({done:task.done,elapsed_ms:task.elapsed_ms,timer_started_at:null}).eq('id',id).eq('project_id',projectId);
+  setSaving('saved');setTimeout(()=>setSaving(''),2000);
+  logActivity(task.done?`✓ Done: "${task.name}"`:`○ Undone: "${task.name}"`);
+  renderTasks();updateProgress();
+}
+
+function toggleAddForm(){
+  const f=document.getElementById('addTaskForm');
+  f.classList.toggle('open');
+  if(f.classList.contains('open'))document.getElementById('newTaskName').focus();
+}
+
+async function addTask(){
+  const name=document.getElementById('newTaskName').value.trim();
+  const assignee=document.getElementById('newTaskAssignee').value.trim()||'Osama';
+  const estimateMin=parseInt(document.getElementById('newTaskEstimate').value)||0;
+  if(!name){showToast('Enter a task name','red');return;}
+  const estimateLabel=estimateMin?fmtMin(estimateMin):'—';
+  const newTask={id:nextCustomId++,name,assignee,estimate:estimateMin,estimateLabel,done:false,elapsed_ms:0,timer_started_at:null};
+  tasks.push(newTask);
+  if(projectId){
+    setSaving('saving');
+    await sb.from('tasks').insert([{id:newTask.id,project_id:projectId,name,assignee,estimate_min:estimateMin,estimate_label:estimateLabel,done:false,elapsed_ms:0,timer_started_at:null}]);
+    setSaving('saved');setTimeout(()=>setSaving(''),2000);
+    logActivity(`➕ Task added: "${name}"`);
+  }
+  document.getElementById('newTaskName').value='';
+  document.getElementById('newTaskAssignee').value='';
+  document.getElementById('newTaskEstimate').value='';
+  document.getElementById('addTaskForm').classList.remove('open');
+  document.getElementById('estimatedDisplay').textContent=fmtMin(totalEstMin());
+  renderTasks();updateProgress();
+  showToast(`✓ Task "${name}" added`,'green');
+}
+
+async function finishProject(){
+  if(!projectId){showToast('No project running','red');return;}
+  if(isPaused){const pd=Date.now()-new Date(pausedAt).getTime();totalPausedMs+=pd;isPaused=false;pausedAt=null;}
+  for(const t of tasks){
+    if(t.timer_started_at){
+      const extra=Date.now()-new Date(t.timer_started_at).getTime();
+      t.elapsed_ms+=extra; t.timer_started_at=null;
+      await sb.from('tasks').update({elapsed_ms:t.elapsed_ms,timer_started_at:null}).eq('id',t.id).eq('project_id',projectId);
+    }
+  }
+  const finishedAt=new Date().toISOString();
+  logActivity(`■ Project finished`);
+  setSaving('saving');
+  await sb.from('projects').update({finished_at:finishedAt,is_paused:false,paused_at:null,total_paused_ms:totalPausedMs}).eq('id',projectId);
+  setSaving('saved');
+  clearInterval(projectTimer);clearInterval(taskTickTimer);
+  projectFinished=true; activeTaskId=null;
+  document.getElementById('statusDot').className='status-dot done';
+  document.getElementById('statusText').textContent='Completed ✓';
+  document.getElementById('elapsedDisplay').classList.remove('running','paused');
+  document.getElementById('btnPause').style.display='none';
+  renderSummary();
+  showToast('■ Project finished & saved!');
+}
+
+async function resetAll(){
+  if(projectId&&!projectFinished){
+    if(isPaused){const pd=Date.now()-new Date(pausedAt).getTime();totalPausedMs+=pd;}
+    for(const t of tasks){if(t.timer_started_at){const extra=Date.now()-new Date(t.timer_started_at).getTime();t.elapsed_ms+=extra;await sb.from('tasks').update({elapsed_ms:t.elapsed_ms,timer_started_at:null}).eq('id',t.id).eq('project_id',projectId);}}
+  }
+  clearInterval(projectTimer);clearInterval(taskTickTimer);
+  projectId=null;projectStartedAt=null;projectFinished=false;activeTaskId=null;
+  isPaused=false;pausedAt=null;totalPausedMs=0;activityLog=[];nextCustomId=100;
+  tasks=DEFAULT_TASKS.map(t=>({...t,done:false,elapsed_ms:0,timer_started_at:null}));
+  document.getElementById('statusDot').className='status-dot';
+  document.getElementById('statusText').textContent='Not started';
+  document.getElementById('elapsedDisplay').textContent='00:00:00';
+  document.getElementById('elapsedDisplay').classList.remove('running','paused');
+  document.getElementById('pausedDisplay').textContent='00:00:00';
+  document.getElementById('remainDisplay').textContent='—';
+  document.getElementById('remainDisplay').style.color='var(--muted)';
+  document.getElementById('summaryPanel').style.display='none';
+  document.getElementById('projectName').value='';
+  document.getElementById('btnPause').style.display='none';
+  document.getElementById('estimatedDisplay').textContent=fmtMin(totalEstMin());
+  renderActivityStrip();renderTasks();updateProgress();
+  showToast('↺ Reset complete');
+}
+
+let dragSrcId=null;
+
+function renderTasks(){
+  const list=document.getElementById('taskList');list.innerHTML='';
+  tasks.forEach(task=>{
+    const elapsed=taskElapsedMs(task),elapsedMin=elapsed/60000;
+    const over=task.estimate>0&&elapsedMin>task.estimate;
+    const isRunning=!!task.timer_started_at&&!isPaused;
+    const card=document.createElement('div');
+    card.className=`task-card${task.done?' done':isRunning?' active':''}`;
+    card.dataset.id=task.id;
+    card.draggable=true;
+    card.innerHTML=`
+      <div class="drag-handle" title="Drag to reorder">⠿</div>
+      <div class="task-check" onclick="event.stopPropagation();toggleTask(${task.id})">${task.done?'✓':isRunning?'▶':''}</div>
+      <div class="task-info" onclick="toggleTask(${task.id})">
+        <span class="task-name">${task.name}</span>
+        <span class="task-meta">${task.assignee}</span>
+      </div>
+      <div class="task-right">
+        <span class="task-estimate">${task.estimateLabel}</span>
+        <span class="task-elapsed" id="task-elapsed-${task.id}" style="${over?'color:var(--accent2)':''}">${elapsed>0?fmtMs(elapsed):''}</span>
+        ${!task.done&&!isPaused?`<button class="task-btn ${isRunning?'running':''}" onclick="toggleTaskTimer(${task.id},event)">${isRunning?'⏸ Stop':'⏱ Start'}</button>`:''}
+        <button class="btn-delete" onclick="deleteTask(${task.id},event)" title="Delete task">🗑</button>
+      </div>`;
+    // Drag events
+    card.addEventListener('dragstart',e=>{
+      dragSrcId=task.id;
+      setTimeout(()=>card.classList.add('dragging'),0);
+      e.dataTransfer.effectAllowed='move';
+    });
+    card.addEventListener('dragend',()=>{ card.classList.remove('dragging'); document.querySelectorAll('.task-card').forEach(c=>c.classList.remove('drag-over')); });
+    card.addEventListener('dragover',e=>{ e.preventDefault(); e.dataTransfer.dropEffect='move'; card.classList.add('drag-over'); });
+    card.addEventListener('dragleave',()=>card.classList.remove('drag-over'));
+    card.addEventListener('drop',e=>{
+      e.preventDefault(); card.classList.remove('drag-over');
+      if(dragSrcId===task.id)return;
+      const fromIdx=tasks.findIndex(t=>t.id===dragSrcId);
+      const toIdx=tasks.findIndex(t=>t.id===task.id);
+      if(fromIdx<0||toIdx<0)return;
+      const moved=tasks.splice(fromIdx,1)[0];
+      tasks.splice(toIdx,0,moved);
+      renderTasks();
+      saveTaskOrder();
+    });
+    list.appendChild(card);
+  });
+  updateProgress();
+}
+
+async function saveTaskOrder(){
+  if(!projectId)return;
+  setSaving('saving');
+  for(let i=0;i<tasks.length;i++){
+    await sb.from('tasks').update({id: tasks[i].id}).eq('id', tasks[i].id).eq('project_id', projectId);
+  }
+  setSaving('saved');setTimeout(()=>setSaving(''),2000);
+}
+
+async function deleteTask(id,e){
+  e.stopPropagation();
+  if(!confirm('Delete this task?'))return;
+  const task=tasks.find(t=>t.id===id);
+  if(!task)return;
+  if(task.timer_started_at){
+    const extra=Date.now()-new Date(task.timer_started_at).getTime();
+    task.elapsed_ms+=extra; task.timer_started_at=null;
+    if(activeTaskId===id)activeTaskId=null;
+  }
+  tasks=tasks.filter(t=>t.id!==id);
+  if(projectId){
+    setSaving('saving');
+    await sb.from('tasks').delete().eq('id',id).eq('project_id',projectId);
+    setSaving('saved');setTimeout(()=>setSaving(''),2000);
+    logActivity(`🗑 Deleted: "${task.name}"`);
+  }
+  document.getElementById('estimatedDisplay').textContent=fmtMin(totalEstMin());
+  renderTasks();updateProgress();
+  showToast(`🗑 Task deleted`,'red');
+}
+
+function updateProgress(){
+  const done=tasks.filter(t=>t.done).length,total=tasks.length;
+  const pct=total?Math.round((done/total)*100):0;
+  document.getElementById('progressFill').style.width=pct+'%';
+  document.getElementById('progressPct').textContent=pct+'%';
+  document.getElementById('taskCount').textContent=`${done} / ${total} done`;
+}
+
+function renderSummary(){
+  const activeMs=activeElapsedMs(),pausedMs=currentPausedMs(),estMin=totalEstMin();
+  const diff=(activeMs/60000)-estMin;
+  document.getElementById('sumActive').textContent=fmtMs(activeMs);
+  document.getElementById('sumPaused').textContent=fmtMs(pausedMs);
+  document.getElementById('sumEstimate').textContent=fmtMin(estMin);
+  document.getElementById('sumDone').textContent=`${tasks.filter(t=>t.done).length} / ${tasks.length}`;
+  const diffEl=document.getElementById('sumDiff');
+  if(diff>0){diffEl.textContent=`+${fmtMin(Math.round(diff))} over`;diffEl.style.color='var(--accent2)';}
+  else{diffEl.textContent=`-${fmtMin(Math.round(-diff))} under`;diffEl.style.color='var(--green)';}
+  const log=document.getElementById('logList');log.innerHTML='';
+  tasks.forEach(t=>{
+    const e=taskElapsedMs(t);if(e===0&&!t.done)return;
+    const over=t.estimate>0&&(e/60000)>t.estimate;
+    const row=document.createElement('div');row.className='log-entry';
+    row.innerHTML=`<span class="log-task">${t.done?'✓':'○'} ${t.name} <span style="color:var(--muted);font-size:10px;">(${t.assignee})</span></span><span class="log-time ${over?'over':''}">${e>0?fmtMs(e):t.done?'done':'—'}</span>`;
+    log.appendChild(row);
+  });
+  const alog=document.getElementById('summaryActivityLog');alog.innerHTML='';
+  activityLog.forEach(entry=>{
+    const row=document.createElement('div');row.className='log-entry';
+    row.innerHTML=`<span class="log-task">${entry.msg}</span><span class="activity-time" style="color:var(--accent);font-size:10px;">${fmtTime(entry.time)}</span>`;
+    alog.appendChild(row);
+  });
+  document.getElementById('summaryPanel').style.display='block';
+}
+
+init();
+</script>
+</body>
+</html>
